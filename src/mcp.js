@@ -19,7 +19,7 @@ To post a local file: call ig_create_upload_url, PUT the file to the returned UR
 
 Post tools publish right away unless publish_at is set. A video can take a few minutes to process. If a tool reports the post is still processing, it finishes on its own, so never post it again. Check it with ig_get_post.
 
-Not available through this API: link, poll, and location stickers on stories, adding licensed music, and collab invites (Instagram Login does not support collaborators).`;
+Not available through this API: link, poll, and location stickers on stories, and adding licensed music.`;
 
 const ACCOUNT_PROP = {
   type: "string",
@@ -42,6 +42,12 @@ const USER_TAGS_PROP = {
 const CAPTION_PROP = { type: "string", description: "Up to 2,200 characters, 30 hashtags, and 20 @ tags." };
 const AI_PROP = { type: "boolean", description: "Disclose that the media is AI generated." };
 const LOCATION_PROP = { type: "string", description: "Facebook Page id of a location." };
+const COLLABORATORS_PROP = {
+  type: "array",
+  maxItems: 3,
+  items: { type: "string" },
+  description: "Up to 3 usernames to invite as collaborators. Each one still has to accept the invite in the app.",
+};
 
 const READ = { readOnlyHint: true, openWorldHint: true };
 const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
@@ -56,13 +62,13 @@ const TOOLS = [
   },
   {
     name: "ig_connect_account",
-    description: "Get the link Zami opens to log in to an Instagram account and connect it.",
+    description: "Get the link Zami opens to log in with Facebook and connect the Instagram accounts linked to his Pages.",
     inputSchema: { type: "object", properties: {} },
     annotations: READ,
   },
   {
     name: "ig_list_accounts",
-    description: "List connected Instagram accounts and when each token expires.",
+    description: "List connected Instagram accounts and the Facebook Page each is linked to.",
     inputSchema: { type: "object", properties: {} },
     annotations: READ,
   },
@@ -103,6 +109,7 @@ const TOOLS = [
         account: ACCOUNT_PROP,
         image_url: { type: "string", description: "media_url from an upload or import, or any public JPEG URL." },
         caption: CAPTION_PROP,
+        collaborators: COLLABORATORS_PROP,
         alt_text: { type: "string", description: "Up to 1,000 characters." },
         user_tags: USER_TAGS_PROP,
         location_id: LOCATION_PROP,
@@ -143,6 +150,7 @@ const TOOLS = [
           },
         },
         caption: CAPTION_PROP,
+        collaborators: COLLABORATORS_PROP,
         location_id: LOCATION_PROP,
         is_ai_generated: AI_PROP,
         publish_at: PUBLISH_AT_PROP,
@@ -160,6 +168,7 @@ const TOOLS = [
         account: ACCOUNT_PROP,
         video_url: { type: "string", description: "media_url from an upload or import, or any public video URL." },
         caption: CAPTION_PROP,
+        collaborators: COLLABORATORS_PROP,
         cover_url: { type: "string", description: "JPEG cover image, 9:16 recommended." },
         thumb_offset: { type: "integer", description: "Frame to use as cover, in milliseconds. Ignored if cover_url is set." },
         share_to_feed: { type: "boolean", description: "Show in the Feed as well as the Reels tab." },
@@ -370,7 +379,7 @@ async function runTool(name, args, env, request, origin) {
       }
       return textResult({
         connect_link: `${origin}/connect?key=${key}`,
-        note: "Open this and log in to the account to connect. Repeat for each account.",
+        note: "Open this, log in with Facebook, and pick the Pages linked to the Instagram accounts to connect.",
       });
     }
     case "ig_list_accounts": {
@@ -379,9 +388,7 @@ async function runTool(name, args, env, request, origin) {
         results.map((a) => ({
           username: `@${a.username}`,
           id: a.ig_user_id,
-          type: a.account_type,
-          permissions: a.permissions,
-          token_expires_at: new Date(a.token_expires_at).toISOString(),
+          facebook_page: a.page_name,
           last_error: a.last_error || undefined,
         })),
       );
@@ -423,6 +430,7 @@ async function runTool(name, args, env, request, origin) {
         publish_at: args.publish_at,
         options: {
           caption: args.caption,
+          collaborators: args.collaborators,
           alt_text: args.alt_text,
           user_tags: args.user_tags,
           location_id: args.location_id,
@@ -441,6 +449,7 @@ async function runTool(name, args, env, request, origin) {
         publish_at: args.publish_at,
         options: {
           caption: args.caption,
+          collaborators: args.collaborators,
           location_id: args.location_id,
           is_ai_generated: args.is_ai_generated,
         },
@@ -456,6 +465,7 @@ async function runTool(name, args, env, request, origin) {
         publish_at: args.publish_at,
         options: {
           caption: args.caption,
+          collaborators: args.collaborators,
           cover_url: args.cover_url,
           thumb_offset: args.thumb_offset,
           share_to_feed: args.share_to_feed,

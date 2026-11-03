@@ -1,4 +1,4 @@
-// The few browser pages: saving the Meta app, and the Instagram login flow.
+// The few browser pages: saving the Meta app, and the Facebook login flow.
 // App credentials go in this form rather than through a chat.
 
 import { authorizeUrl, exchangeCode, saveAccount } from "./instagram.js";
@@ -48,12 +48,12 @@ export async function setupPage(request, env, key) {
   return page(
     "Instagram MCP setup",
     `<h1>Instagram MCP setup</h1>
-<p>Paste the Instagram App ID and Instagram App Secret from your Meta app, under API setup with Instagram login. Add this as the OAuth redirect URI there:<br><code>${esc(origin)}/auth/callback</code></p>
+<p>Paste the App ID and App Secret from your Meta app, under App settings then Basic. The Meta app needs this as a valid OAuth redirect URI:<br><code>${esc(origin)}/auth/callback</code></p>
 <form method="post" action="/setup">
   <input type="hidden" name="key" value="${esc(key)}">
-  <label for="app_id">Instagram App ID</label>
+  <label for="app_id">App ID</label>
   <input id="app_id" name="app_id" required value="${esc(app?.appId)}" autocomplete="off">
-  <label for="app_secret">Instagram App Secret</label>
+  <label for="app_secret">App Secret</label>
   <input id="app_secret" name="app_secret" type="password" required autocomplete="off">
   <button type="submit">Save</button>
 </form>`,
@@ -71,7 +71,7 @@ export async function saveSetup(request, env, form) {
   const key = esc(form.get("key"));
   return page(
     "Saved",
-    `<h1>Saved</h1><p>Now log in to the Instagram account you want to connect.</p><a class="button" href="/connect?key=${key}">Connect an account</a>`,
+    `<h1>Saved</h1><p>Now log in with Facebook and pick the Pages linked to your Instagram accounts.</p><a class="button" href="/connect?key=${key}">Connect an account</a>`,
   );
 }
 
@@ -105,8 +105,16 @@ export async function authCallback(request, env) {
       redirectUri: `${baseUrl(request)}/auth/callback`,
       code: (url.searchParams.get("code") || "").replace(/#_$/, ""),
     });
-    const account = await saveAccount(env, result);
-    return page("Connected", `<h1>Connected @${esc(account.username)}</h1><p>You can close this tab.</p>`);
+    if (!result.length) {
+      return page(
+        "No accounts found",
+        `<h1>No accounts found</h1><p>None of the Pages you picked has a linked Instagram professional account. Link one to its Page, or make sure your Facebook account can manage that Page, then try again.</p>`,
+        400,
+      );
+    }
+    const names = [];
+    for (const account of result) names.push(await saveAccount(env, account));
+    return page("Connected", `<h1>Connected ${names.map((n) => `@${esc(n)}`).join(", ")}</h1><p>You can close this tab.</p>`);
   } catch (err) {
     return page("Not connected", `<h1>Not connected</h1><p>${esc(err.message)}</p>`, 400);
   }

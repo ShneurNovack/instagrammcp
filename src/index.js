@@ -2,8 +2,8 @@
 //
 //   POST /?bearer_token=...      MCP endpoint
 //   GET  /setup?key=...          save the Meta app
-//   GET  /connect?key=...        log in to an Instagram account
-//   GET  /auth/callback          Instagram login redirect
+//   GET  /connect?key=...        connect Instagram accounts through Facebook
+//   GET  /auth/callback          Facebook login redirect
 //   /upload/<token>              one-time file upload
 //   /media/<key>                 public media Meta fetches
 //
@@ -12,7 +12,6 @@
 import { handleMcp } from "./mcp.js";
 import { cleanup, handleMedia, handleUpload } from "./media.js";
 import { authCallback, saveSetup, setupPage, startConnect } from "./pages.js";
-import { refreshTokens } from "./instagram.js";
 import { runDuePosts } from "./posts.js";
 import { safeEqual } from "./util.js";
 
@@ -76,7 +75,6 @@ export default {
       (async () => {
         await runDuePosts(env);
         if (new Date(event.scheduledTime).getUTCMinutes() === 17) {
-          await refreshTokens(env);
           await cleanup(env);
         }
       })(),
