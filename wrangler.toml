@@ -1,0 +1,21 @@
+name = "instagrammcp"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "instagrammcp"
+database_id = "7e4fc39c-f41d-462b-a692-4dc7bf639faf"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "instagrammcp-media"
+
+[images]
+binding = "IMAGES"
+
+[observability]
+enabled = true
