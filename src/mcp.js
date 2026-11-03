@@ -242,7 +242,7 @@ const TOOLS = [
   },
   {
     name: "ig_recent_media",
-    description: "List the account's most recent feed posts and reels, including ones posted in the app.",
+    description: "List the account's most recent feed posts and reels with like and comment counts, including ones posted in the app.",
     inputSchema: {
       type: "object",
       properties: { account: ACCOUNT_PROP, limit: { type: "integer", minimum: 1, maximum: 50 } },
@@ -529,7 +529,7 @@ async function runTool(name, args, env, request, origin) {
       const token = await accountToken(env, acct.ig_user_id);
       return textResult(
         await igGet(env, token, `${acct.ig_user_id}/media`, {
-          fields: "id,caption,media_type,media_product_type,permalink,timestamp",
+          fields: "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
           limit: Math.min(args.limit || 10, 50),
         }),
       );
