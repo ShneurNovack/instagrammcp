@@ -24,18 +24,9 @@ const fake = createServer(async (req, res) => {
     res.end(JSON.stringify(data));
   };
 
-  if (url.pathname.endsWith("/oauth/access_token")) {
-    return send({ access_token: url.searchParams.get("grant_type") === "fb_exchange_token" ? "long-user" : "short-user" });
-  }
-  if (url.pathname.endsWith("/me/accounts")) {
-    if (url.searchParams.get("access_token") !== "long-user") return send({ error: { message: "need long token", code: 190 } }, 400);
-    return send({
-      data: [
-        { id: "9001", name: "Test Page", access_token: "long-token", instagram_business_account: { id: "555", username: "testacct", name: "Test" } },
-        { id: "9002", name: "No IG Page", access_token: "other" },
-      ],
-    });
-  }
+  if (url.pathname === "/oauth/access_token") return send({ access_token: "short", user_id: 555, permissions: "instagram_business_basic,instagram_business_content_publish" });
+  if (url.pathname === "/access_token") return send({ access_token: "long-token", token_type: "bearer", expires_in: 5183944 });
+  if (url.pathname.endsWith("/me")) return send({ user_id: "555", username: "testacct", name: "Test", account_type: "BUSINESS" });
   if (url.pathname.endsWith("/555/media") && req.method === "POST") {
     if (req.headers.authorization !== "Bearer long-token") return send({ error: { message: "bad token", code: 190 } }, 401);
     const body = JSON.parse(raw);
@@ -72,15 +63,14 @@ await new Promise((r) => fake.listen(FAKE, "127.0.0.1", r));
 
 rmSync(".wrangler", { recursive: true, force: true });
 writeFileSync(".dev.vars", `MCP_TOKEN=${TOKEN}\nENCRYPTION_KEY=test-encryption-key\n`);
-for (const file of ["0001_init", "0002_facebook_login"]) {
-  execSync(`npx wrangler d1 execute instagrammcp --local --file migrations/${file}.sql`, { stdio: "pipe" });
-}
+execSync("npx wrangler d1 execute instagrammcp --local --file migrations/0001_init.sql", { stdio: "pipe" });
 
 const dev = spawn(
   "npx",
   [
     "wrangler", "dev", "--port", String(PORT), "--ip", "127.0.0.1", "--test-scheduled",
     "--var", `IG_GRAPH_ROOT:http://127.0.0.1:${FAKE}`,
+    "--var", `IG_API_ROOT:http://127.0.0.1:${FAKE}`,
     "--var", `IG_AUTH_ROOT:http://127.0.0.1:${FAKE}`,
   ],
   { stdio: ["ignore", "pipe", "pipe"], detached: true },
@@ -155,18 +145,18 @@ try {
   check("setup saves the app", save.status === 200);
   const connect = await fetch(`${WORKER}/connect?key=${TOKEN}`, { redirect: "manual" });
   const authorize = new URL(connect.headers.get("location"));
-  check("connect redirects to authorize", authorize.pathname === "/v26.0/dialog/oauth" && authorize.searchParams.get("scope").includes("instagram_content_publish"));
+  check("connect redirects to authorize", authorize.pathname === "/oauth/authorize" && authorize.searchParams.get("force_reauth") === "true");
   const state = authorize.searchParams.get("state");
   const forged = await fetch(`${WORKER}/auth/callback?code=abc&state=forged`);
   check("callback rejects a forged state", forged.status === 400);
-  const callback = await fetch(`${WORKER}/auth/callback?code=abc&state=${state}`);
+  const callback = await fetch(`${WORKER}/auth/callback?code=abc%23_&state=${state}`);
   const callbackText = await callback.text();
   check("callback connects the account", callbackText.includes("@testacct"), callbackText.slice(0, 300));
   const replay = await fetch(`${WORKER}/auth/callback?code=abc&state=${state}`);
   check("callback state is single use", replay.status === 400);
 
   const accounts = await tool("ig_list_accounts");
-  check("account listed once, Page without Instagram skipped", accounts.data.length === 1 && accounts.data[0]?.username === "@testacct" && accounts.data[0]?.facebook_page === "Test Page", JSON.stringify(accounts.data));
+  check("account listed", accounts.data[0]?.username === "@testacct", JSON.stringify(accounts.data));
   check("token not exposed", !JSON.stringify(accounts.data).includes("long-token"));
 
   const upload = await tool("ig_create_upload_url", { filename: "photo.jpg" });
@@ -212,9 +202,6 @@ try {
   const story = await tool("ig_post_story", { media_url: IMG });
   check("story publishes", story.data.status === "published", JSON.stringify(story.data));
   check("story sent as STORIES", calls.containers.some((c) => c.media_type === "STORIES" && c.image_url));
-
-  await tool("ig_post_reel", { video_url: VID, caption: "collab", collaborators: ["guest"] });
-  check("collaborators sent on the reel", calls.containers.some((c) => c.caption === "collab" && c.collaborators?.[0] === "guest"));
 
   const rejected = await tool("ig_post_image", { image_url: IMG, caption: "reject me" });
   check("Meta rejection reported", rejected.isError && rejected.data.status === "failed" && /image is bad/.test(rejected.data.error), JSON.stringify(rejected));

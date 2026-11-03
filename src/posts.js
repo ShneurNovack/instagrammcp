@@ -77,7 +77,6 @@ function singleParams(post) {
       ...shared,
       image_url: item.url,
       caption: o.caption,
-      collaborators: o.collaborators,
       alt_text: o.alt_text,
       is_ai_generated: o.is_ai_generated,
     });
@@ -88,7 +87,6 @@ function singleParams(post) {
       media_type: "REELS",
       video_url: item.url,
       caption: o.caption,
-      collaborators: o.collaborators,
       cover_url: o.cover_url,
       thumb_offset: o.thumb_offset,
       share_to_feed: o.share_to_feed,
@@ -173,7 +171,6 @@ async function finishCarousel(env, post, token) {
       media_type: "CAROUSEL",
       children: post.children.join(","),
       caption: o.caption,
-      collaborators: o.collaborators,
       location_id: o.location_id,
       is_ai_generated: o.is_ai_generated,
     }),
