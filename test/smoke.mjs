@@ -45,6 +45,19 @@ const fake = createServer(async (req, res) => {
     c.published = true;
     return send({ id: `media_${creation_id}` });
   }
+  if (url.pathname.endsWith("/777/comments")) {
+    return send({
+      data: [{ id: "c1", text: "beautiful", username: "someone", timestamp: "2026-11-02T00:00:00+0000", like_count: 2 }],
+      paging: { cursors: { after: "CURSOR" }, next: `https://graph.instagram.com/next?access_token=${req.url.includes("long-token") ? "long-token" : "x"}` },
+    });
+  }
+  if (url.pathname.endsWith("/777/insights")) {
+    return send({ data: [{ name: "views", period: "lifetime", values: [{ value: 5000 }] }, { name: "reach", period: "lifetime", values: [{ value: 4000 }] }] });
+  }
+  if (url.pathname.endsWith("/v26.0/777")) return send({ media_product_type: "REELS", id: "777" });
+  if (url.pathname.endsWith("/555/insights")) {
+    return send({ data: [{ name: "reach", period: "day", total_value: { value: 123456 } }] });
+  }
   const m = url.pathname.match(/\/v26\.0\/(\d+)$/);
   if (m && containers.has(m[1])) {
     const c = containers.get(m[1]);
@@ -133,7 +146,7 @@ try {
   const init = await rpc("initialize", { protocolVersion: "2025-06-18" });
   check("initialize", init.result?.serverInfo?.name === "instagrammcp");
   const list = await rpc("tools/list");
-  check("tools/list", list.result?.tools?.length === 16, `got ${list.result?.tools?.length}`);
+  check("tools/list", list.result?.tools?.length === 19, `got ${list.result?.tools?.length}`);
 
   const early = await tool("ig_post_image", { image_url: "https://x.test/a.jpg" });
   check("posting before an account exists errors", early.isError);
@@ -248,6 +261,14 @@ try {
   check("failed list", failed.data.length === 2, String(failed.data.length));
   const limit = await tool("ig_publishing_limit");
   check("publishing limit", limit.data.data?.[0]?.config?.quota_total === 100, JSON.stringify(limit.data));
+
+  const comments = await tool("ig_get_comments", { media_id: "777" });
+  check("comments read", comments.data.comments?.[0]?.text === "beautiful" && comments.data.next_cursor === "CURSOR", JSON.stringify(comments.data));
+  check("comments hide the token", !JSON.stringify(comments.data).includes("long-token"));
+  const mediaInsights = await tool("ig_media_insights", { media_id: "777" });
+  check("media insights flattened", mediaInsights.data.views === 5000 && mediaInsights.data.reach === 4000, JSON.stringify(mediaInsights.data));
+  const accountInsights = await tool("ig_account_insights");
+  check("account insights flattened", accountInsights.data.reach === 123456, JSON.stringify(accountInsights.data));
 
   const status = await tool("ig_setup_status");
   check("setup status", status.data.meta_app_saved === true && status.data.connected_accounts[0] === "@testacct");

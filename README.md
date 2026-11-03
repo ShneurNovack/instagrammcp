@@ -9,6 +9,7 @@ MCP server for publishing and scheduling to Instagram professional accounts thro
 - Hosts media in R2 so Meta can fetch it, with one-time upload links and imports from direct URLs
 - Converts PNG and WebP to JPEG, since Instagram only takes JPEG
 - Refreshes login tokens before their 60 days run out
+- Reads comments and insights on posts and the account
 - Runs a cron every minute, so scheduled posts and slow video processing finish on their own
 
 ## Setup

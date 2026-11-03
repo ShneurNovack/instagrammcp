@@ -5,7 +5,12 @@ import { decrypt, encrypt } from "./util.js";
 export const API_VERSION = "v26.0";
 const DAY = 86400000;
 
-export const SCOPES = ["instagram_business_basic", "instagram_business_content_publish"];
+export const SCOPES = [
+  "instagram_business_basic",
+  "instagram_business_content_publish",
+  "instagram_business_manage_comments",
+  "instagram_business_manage_insights",
+];
 
 function hosts(env) {
   // The IG_* overrides exist only so the local test can point at a fake Meta.
