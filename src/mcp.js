@@ -527,12 +527,12 @@ async function runTool(name, args, env, request, origin) {
     case "ig_recent_media": {
       const acct = await resolveAccount(env, args.account);
       const token = await accountToken(env, acct.ig_user_id);
-      return textResult(
-        await igGet(env, token, `${acct.ig_user_id}/media`, {
-          fields: "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
-          limit: Math.min(args.limit || 10, 50),
-        }),
-      );
+      // Only return data: Meta's paging links carry the access token.
+      const { data } = await igGet(env, token, `${acct.ig_user_id}/media`, {
+        fields: "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
+        limit: Math.min(args.limit || 10, 50),
+      });
+      return textResult(data);
     }
     default:
       throw new ToolError(`Unknown tool: ${name}`);
