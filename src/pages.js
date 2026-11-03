@@ -47,8 +47,8 @@ export function privacyPage() {
     "Privacy Policy",
     `<h1>Privacy Policy</h1>
 <p>This is a private publishing tool run by Reshape Creative. It posts content to, and reads comments and insights from, Instagram professional accounts its operator manages. It isn't offered to the public. Last updated November 2, 2026.</p>
-<p><strong>What it stores.</strong> For each connected account: the username, account id, an encrypted access token, and the posts scheduled or published through this tool. Media files uploaded for posting are kept for about 14 days, then deleted. Comments and insights are read when requested and aren't stored.</p>
-<p><strong>How it's used.</strong> Only to publish content and report on the connected accounts. Data isn't sold, used for advertising, or shared with anyone beyond the service providers that run the tool, which are Cloudflare for hosting and Meta for the Instagram API.</p>
+<p><strong>What it stores.</strong> For each connected account: the username, account id, an encrypted access token, and the posts scheduled or published through this tool. Media files uploaded for posting are kept for about 14 days, then deleted. Comments and insights are read when the operator requests them and aren't stored by this tool.</p>
+<p><strong>How it's used.</strong> Only to publish content and report on the connected accounts. Data isn't sold, used for advertising, or shared with anyone beyond the service providers that run the tool: Cloudflare for hosting, Meta for the Instagram API, and Anthropic, whose assistant Claude the operator uses to work with this data.</p>
 <p><strong>Deleting your data.</strong> Remove the app under Apps and websites in your Instagram settings, or email <a href="mailto:hello@reshapecreative.com">hello@reshapecreative.com</a>, and the account's stored data will be deleted.</p>`,
   );
 }
