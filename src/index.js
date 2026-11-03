@@ -6,12 +6,13 @@
 //   GET  /auth/callback          Instagram login redirect
 //   /upload/<token>              one-time file upload
 //   /media/<key>                 public media Meta fetches
+//   /privacy                     privacy policy, which Live mode requires
 //
 // The cron runs every minute: it publishes due posts, and tidies up once an hour.
 
 import { handleMcp } from "./mcp.js";
 import { cleanup, handleMedia, handleUpload } from "./media.js";
-import { authCallback, saveSetup, setupPage, startConnect } from "./pages.js";
+import { authCallback, privacyPage, saveSetup, setupPage, startConnect } from "./pages.js";
 import { refreshTokens } from "./instagram.js";
 import { runDuePosts } from "./posts.js";
 import { safeEqual } from "./util.js";
@@ -39,6 +40,7 @@ export default {
       return handleUpload(request, env, pathname.slice("/upload/".length));
     }
     if (pathname === "/auth/callback") return authCallback(request, env);
+    if (pathname === "/privacy") return privacyPage();
 
     if (pathname === "/setup" && request.method === "GET") {
       const key = url.searchParams.get("key");

@@ -138,6 +138,9 @@ const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1, 1
 try {
   await waitUp();
 
+  const privacy = await fetch(`${WORKER}/privacy`);
+  check("privacy page is public", privacy.status === 200 && (await privacy.text()).includes("Privacy Policy"));
+
   const noAuth = await fetch(`${WORKER}/`, { method: "POST", body: "{}" });
   check("MCP rejects a missing token", noAuth.status === 401);
   const badSetup = await fetch(`${WORKER}/setup?key=wrong`);
