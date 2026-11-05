@@ -149,7 +149,7 @@ try {
   const init = await rpc("initialize", { protocolVersion: "2025-06-18" });
   check("initialize", init.result?.serverInfo?.name === "instagrammcp");
   const list = await rpc("tools/list");
-  check("tools/list", list.result?.tools?.length === 19, `got ${list.result?.tools?.length}`);
+  check("tools/list", list.result?.tools?.length === 20, `got ${list.result?.tools?.length}`);
 
   const early = await tool("ig_post_image", { image_url: "https://x.test/a.jpg" });
   check("posting before an account exists errors", early.isError);
