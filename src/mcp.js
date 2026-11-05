@@ -311,6 +311,22 @@ const TOOLS = [
     },
     annotations: READ,
   },
+  {
+    name: "ig_business_discovery",
+    description:
+      "Read another Instagram professional (business or creator) account's public profile and recent posts with like and comment counts, through Meta's Business Discovery. Personal accounts are not readable. Read only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        username: { type: "string", description: "The other account's username, with or without @." },
+        limit: { type: "integer", minimum: 1, maximum: 50, description: "How many recent posts. Default 12." },
+        after: { type: "string", description: "next_cursor from the previous page of posts." },
+        account: ACCOUNT_PROP,
+      },
+      required: ["username"],
+    },
+    annotations: READ,
+  },
 ];
 
 class ToolError extends Error {}
@@ -651,6 +667,24 @@ async function runTool(name, args, env, request, origin) {
         until: useRange ? toSeconds(args.until, now) : undefined,
       });
       return textResult(flattenInsights(data));
+    }
+    case "ig_business_discovery": {
+      const acct = await resolveAccount(env, args.account);
+      const token = await accountToken(env, acct.ig_user_id);
+      const user = String(args.username || "").replace(/^@/, "").trim();
+      if (!/^[A-Za-z0-9._]{1,30}$/.test(user)) throw new ToolError(`${args.username} isn't a valid Instagram username.`);
+      const limit = Math.min(args.limit || 12, 50);
+      const after = args.after && /^[A-Za-z0-9_=-]+$/.test(args.after) ? `.after(${args.after})` : "";
+      const media = `media.limit(${limit})${after}{id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count}`;
+      const result = await igGet(env, token, acct.ig_user_id, {
+        fields: `business_discovery.username(${user}){id,username,name,biography,website,followers_count,follows_count,media_count,profile_picture_url,${media}}`,
+      });
+      const bd = result.business_discovery || {};
+      const posts = bd.media?.data || [];
+      // Meta's paging links carry the access token, so only the cursor goes out.
+      const next = bd.media?.paging?.cursors?.after && bd.media?.paging?.next ? bd.media.paging.cursors.after : undefined;
+      delete bd.media;
+      return textResult({ account: bd, posts, next_cursor: next });
     }
     default:
       throw new ToolError(`Unknown tool: ${name}`);
