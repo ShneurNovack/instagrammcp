@@ -59,8 +59,15 @@ async function parseResponse(response) {
   });
 }
 
-export async function igGet(env, token, path, params = {}) {
-  const url = new URL(`${hosts(env).graphRoot}/${API_VERSION}/${path}`);
+// `auth` is a token string (Instagram Login, graph.instagram.com) or { token, root } from accountAuth.
+function unpack(env, auth) {
+  if (auth && typeof auth === "object") return { token: auth.token, root: auth.root };
+  return { token: auth, root: hosts(env).graphRoot };
+}
+
+export async function igGet(env, auth, path, params = {}) {
+  const { token, root } = unpack(env, auth);
+  const url = new URL(`${root}/${API_VERSION}/${path}`);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
   }
@@ -68,8 +75,9 @@ export async function igGet(env, token, path, params = {}) {
   return parseResponse(await fetch(url));
 }
 
-export async function igPost(env, token, path, body = {}) {
-  const response = await fetch(`${hosts(env).graphRoot}/${API_VERSION}/${path}`, {
+export async function igPost(env, auth, path, body = {}) {
+  const { token, root } = unpack(env, auth);
+  const response = await fetch(`${root}/${API_VERSION}/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
@@ -151,6 +159,13 @@ export async function saveAccount(env, result) {
   return { id, username: result.profile.username };
 }
 
+// Token plus the right Graph host for the account's login type.
+export async function accountAuth(env, account) {
+  const token = await decrypt(env, account.token_enc);
+  const root = account.provider === "facebook" ? (env.FB_GRAPH_ROOT || "https://graph.facebook.com") : hosts(env).graphRoot;
+  return { token, root };
+}
+
 export async function accountToken(env, igUserId) {
   const row = await env.DB.prepare("SELECT token_enc FROM accounts WHERE ig_user_id = ?").bind(igUserId).first();
   if (!row) throw new IgError(`Account ${igUserId} is not connected.`);
@@ -161,7 +176,7 @@ export async function accountToken(env, igUserId) {
 export async function refreshTokens(env) {
   const now = Date.now();
   const { results } = await env.DB.prepare(
-    "SELECT ig_user_id, token_enc, username FROM accounts WHERE token_expires_at < ? AND token_refreshed_at < ?",
+    "SELECT ig_user_id, token_enc, username FROM accounts WHERE provider = 'instagram' AND token_expires_at < ? AND token_refreshed_at < ?",
   )
     .bind(now + 45 * DAY, now - DAY)
     .all();
@@ -182,4 +197,96 @@ export async function refreshTokens(env) {
         .run();
     }
   }
+}
+
+
+// ---- Facebook Login (graph.facebook.com) ---------------------------------------------------------
+// Business Discovery (reading other professional accounts) only exists on this flavor of the API,
+// so an account can also be connected through the Facebook Page it is linked to. Page tokens made
+// from a long-lived user token don't expire on a timer.
+
+export const FB_SCOPES = [
+  "instagram_basic",
+  "instagram_manage_insights",
+  "pages_show_list",
+  "pages_read_engagement",
+  "business_management",
+];
+
+function fbHosts(env) {
+  return {
+    graphRoot: env.FB_GRAPH_ROOT || "https://graph.facebook.com",
+    authRoot: env.FB_AUTH_ROOT || "https://www.facebook.com",
+  };
+}
+
+export function fbAuthorizeUrl(env, { appId, redirectUri, state }) {
+  const url = new URL(`${fbHosts(env).authRoot}/${API_VERSION}/dialog/oauth`);
+  url.searchParams.set("client_id", appId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", FB_SCOPES.join(","));
+  url.searchParams.set("state", state);
+  url.searchParams.set("auth_type", "rerequest");
+  return url.toString();
+}
+
+// Code to user token to long-lived user token to one Page token per linked Instagram account.
+export async function fbExchangeCode(env, { appId, appSecret, redirectUri, code }) {
+  const { graphRoot } = fbHosts(env);
+  const graph = (path, params) => {
+    const url = new URL(`${graphRoot}/${API_VERSION}/${path}`);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    return fetch(url).then(parseResponse);
+  };
+  const short = await graph("oauth/access_token", { client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code });
+  const long = await graph("oauth/access_token", {
+    grant_type: "fb_exchange_token",
+    client_id: appId,
+    client_secret: appSecret,
+    fb_exchange_token: short.access_token,
+  });
+  const accounts = [];
+  let after;
+  do {
+    const page = await graph("me/accounts", {
+      fields: "id,name,access_token,instagram_business_account{id,username,name}",
+      limit: "100",
+      access_token: long.access_token,
+      ...(after ? { after } : {}),
+    });
+    for (const fb of page.data || []) {
+      const ig = fb.instagram_business_account;
+      if (ig?.username) accounts.push({ ig, pageId: fb.id, pageName: fb.name, token: fb.access_token });
+    }
+    after = page.paging?.next ? page.paging?.cursors?.after : undefined;
+  } while (after);
+  return accounts;
+}
+
+export async function saveFbAccount(env, account) {
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO accounts (ig_user_id, username, name, account_type, token_enc, token_expires_at, token_refreshed_at,
+       permissions, last_error, connected_at, provider, page_id, page_name)
+     VALUES (?, ?, ?, 'BUSINESS', ?, ?, ?, ?, NULL, ?, 'facebook', ?, ?)
+     ON CONFLICT (ig_user_id) DO UPDATE SET username = excluded.username, name = excluded.name,
+       token_enc = excluded.token_enc, token_expires_at = excluded.token_expires_at, token_refreshed_at = excluded.token_refreshed_at,
+       permissions = excluded.permissions, last_error = NULL, provider = 'facebook',
+       page_id = excluded.page_id, page_name = excluded.page_name`,
+  )
+    .bind(
+      String(account.ig.id),
+      account.ig.username,
+      account.ig.name || null,
+      await encrypt(env, account.token),
+      now + 3650 * DAY,
+      now,
+      FB_SCOPES.join(","),
+      now,
+      account.pageId,
+      account.pageName,
+    )
+    .run();
+  return { id: String(account.ig.id), username: account.ig.username };
 }

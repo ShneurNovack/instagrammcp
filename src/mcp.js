@@ -1,7 +1,7 @@
 // MCP over Streamable HTTP (stateless, JSON responses), same shape as the other
 // Workers MCP servers, with hand-written tools instead of generated ones.
 
-import { accountToken, igGet } from "./instagram.js";
+import { accountAuth, accountToken, igGet } from "./instagram.js";
 import { createUpload, importFromUrl, mediaTypeOfUrl } from "./media.js";
 import { advancePost, cancelPost, createPost, getPost, reschedulePost } from "./posts.js";
 import { baseUrl, getAppCredentials, sleep } from "./util.js";
@@ -336,8 +336,12 @@ function textResult(data, isError = false) {
   return { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) };
 }
 
-async function resolveAccount(env, value) {
-  const { results } = await env.DB.prepare("SELECT * FROM accounts ORDER BY connected_at").all();
+async function resolveAccount(env, value, provider) {
+  let { results } = await env.DB.prepare("SELECT * FROM accounts ORDER BY connected_at").all();
+  if (provider) {
+    results = results.filter((a) => a.provider === provider);
+    if (!results.length) throw new ToolError("Business Discovery needs an account connected through Facebook. Open /connect-fb?key=<MCP_TOKEN> and log in with the Facebook account that manages the Page linked to one of your Instagram accounts.");
+  }
   if (!results.length) throw new ToolError("No Instagram accounts are connected yet. Use ig_connect_account.");
   if (!value) {
     if (results.length === 1) return results[0];
@@ -415,6 +419,9 @@ function describe(post, account) {
 
 async function submitPost(env, { account, kind, items, options, publish_at }) {
   const acct = await resolveAccount(env, account);
+  if (acct.provider === "facebook") {
+    throw new ToolError(`@${acct.username} is connected through Facebook, which this server uses for reading only. Connect it with Instagram Login to publish.`);
+  }
   const { publishAt, scheduled } = parsePublishAt(publish_at);
   checkCaption(options.caption);
   const clean = Object.fromEntries(Object.entries(options).filter(([, v]) => v !== undefined));
@@ -451,6 +458,7 @@ async function runTool(name, args, env, request, origin) {
         meta_app_saved: Boolean(app),
         connected_accounts: results.map((a) => `@${a.username}`),
         setup_page: `${origin}/setup?key=${key}`,
+        connect_with_facebook: `${origin}/connect-fb?key=${key}`,
         oauth_redirect_uri: `${origin}/auth/callback`,
       });
     }
@@ -470,6 +478,8 @@ async function runTool(name, args, env, request, origin) {
           username: `@${a.username}`,
           id: a.ig_user_id,
           type: a.account_type,
+          connected_via: a.provider || "instagram",
+          page: a.page_name || undefined,
           permissions: a.permissions,
           token_expires_at: new Date(a.token_expires_at).toISOString(),
           last_error: a.last_error || undefined,
@@ -609,14 +619,14 @@ async function runTool(name, args, env, request, origin) {
     }
     case "ig_publishing_limit": {
       const acct = await resolveAccount(env, args.account);
-      const token = await accountToken(env, acct.ig_user_id);
+      const token = await accountAuth(env, acct);
       return textResult(
         await igGet(env, token, `${acct.ig_user_id}/content_publishing_limit`, { fields: "config,quota_usage" }),
       );
     }
     case "ig_recent_media": {
       const acct = await resolveAccount(env, args.account);
-      const token = await accountToken(env, acct.ig_user_id);
+      const token = await accountAuth(env, acct);
       // Only return data: Meta's paging links carry the access token.
       const { data } = await igGet(env, token, `${acct.ig_user_id}/media`, {
         fields: "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
@@ -626,7 +636,7 @@ async function runTool(name, args, env, request, origin) {
     }
     case "ig_get_comments": {
       const acct = await resolveAccount(env, args.account);
-      const token = await accountToken(env, acct.ig_user_id);
+      const token = await accountAuth(env, acct);
       const base = "id,text,username,timestamp,like_count";
       const result = await igGet(env, token, `${args.media_id}/comments`, {
         fields: args.include_replies ? `${base},replies{${base}}` : base,
@@ -637,7 +647,7 @@ async function runTool(name, args, env, request, origin) {
     }
     case "ig_media_insights": {
       const acct = await resolveAccount(env, args.account);
-      const token = await accountToken(env, acct.ig_user_id);
+      const token = await accountAuth(env, acct);
       let metrics = args.metrics;
       if (!metrics) {
         const { media_product_type: type } = await igGet(env, token, args.media_id, { fields: "media_product_type" });
@@ -648,7 +658,7 @@ async function runTool(name, args, env, request, origin) {
     }
     case "ig_account_insights": {
       const acct = await resolveAccount(env, args.account);
-      const token = await accountToken(env, acct.ig_user_id);
+      const token = await accountAuth(env, acct);
       const toSeconds = (value, fallback) => {
         if (!value) return fallback;
         const ms = Date.parse(value);
@@ -669,8 +679,8 @@ async function runTool(name, args, env, request, origin) {
       return textResult(flattenInsights(data));
     }
     case "ig_business_discovery": {
-      const acct = await resolveAccount(env, args.account);
-      const token = await accountToken(env, acct.ig_user_id);
+      const acct = await resolveAccount(env, args.account, "facebook");
+      const token = await accountAuth(env, acct);
       const user = String(args.username || "").replace(/^@/, "").trim();
       if (!/^[A-Za-z0-9._]{1,30}$/.test(user)) throw new ToolError(`${args.username} isn't a valid Instagram username.`);
       const limit = Math.min(args.limit || 12, 50);

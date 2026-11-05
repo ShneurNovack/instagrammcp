@@ -2,7 +2,8 @@
 //
 //   POST /?bearer_token=...      MCP endpoint
 //   GET  /setup?key=...          save the Meta app
-//   GET  /connect?key=...        log in to an Instagram account
+//   GET  /connect?key=...        log in to an Instagram account (Instagram Login)
+//   GET  /connect-fb?key=...     connect through a Facebook Page (Facebook Login, enables Business Discovery)
 //   GET  /auth/callback          Instagram login redirect
 //   /upload/<token>              one-time file upload
 //   /media/<key>                 public media Meta fetches
@@ -55,6 +56,10 @@ export default {
     if (pathname === "/connect" && request.method === "GET") {
       if (!(await safeEqual(url.searchParams.get("key"), env.MCP_TOKEN))) return new Response("Not found", { status: 404 });
       return startConnect(request, env);
+    }
+    if (pathname === "/connect-fb" && request.method === "GET") {
+      if (!(await safeEqual(url.searchParams.get("key"), env.MCP_TOKEN))) return new Response("Not found", { status: 404 });
+      return startConnect(request, env, "facebook");
     }
 
     if (pathname === "/" || pathname === "/mcp") {

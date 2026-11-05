@@ -1,7 +1,7 @@
 // The few browser pages: saving the Meta app, and the Instagram login flow.
 // App credentials go in this form rather than through a chat.
 
-import { authorizeUrl, exchangeCode, saveAccount } from "./instagram.js";
+import { authorizeUrl, exchangeCode, fbAuthorizeUrl, fbExchangeCode, saveAccount, saveFbAccount } from "./instagram.js";
 import { baseUrl, encrypt, getAppCredentials, randomId, setSetting } from "./util.js";
 
 function esc(value) {
@@ -86,14 +86,16 @@ export async function saveSetup(request, env, form) {
   );
 }
 
-export async function startConnect(request, env) {
+export async function startConnect(request, env, provider = "instagram") {
   const app = await getAppCredentials(env);
   if (!app) return page("Not set up", `<h1>Not set up</h1><p>Save the Meta app first.</p>`, 400);
-  const state = randomId(24);
+  // The state carries the login type so the one callback can finish either flow.
+  const state = (provider === "facebook" ? "fb_" : "ig_") + randomId(24);
   await env.DB.prepare("INSERT INTO oauth_states (state, expires_at) VALUES (?, ?)")
     .bind(state, Date.now() + 15 * 60000)
     .run();
-  const target = authorizeUrl(env, { appId: app.appId, redirectUri: `${baseUrl(request)}/auth/callback`, state });
+  const make = provider === "facebook" ? fbAuthorizeUrl : authorizeUrl;
+  const target = make(env, { appId: app.appId, redirectUri: `${baseUrl(request)}/auth/callback`, state });
   return Response.redirect(target, 302);
 }
 
@@ -110,6 +112,24 @@ export async function authCallback(request, env) {
 
   try {
     const app = await getAppCredentials(env);
+    if (state.state.startsWith("fb_")) {
+      const found = await fbExchangeCode(env, {
+        appId: app.appId,
+        appSecret: app.appSecret,
+        redirectUri: `${baseUrl(request)}/auth/callback`,
+        code: (url.searchParams.get("code") || "").replace(/#_$/, ""),
+      });
+      if (!found.length) {
+        return page(
+          "No accounts found",
+          `<h1>No accounts found</h1><p>None of the Pages you picked has a linked Instagram professional account. Link one to its Page, or make sure your Facebook account can manage that Page, then try again.</p>`,
+          400,
+        );
+      }
+      const names = [];
+      for (const account of found) names.push((await saveFbAccount(env, account)).username);
+      return page("Connected", `<h1>Connected ${names.map((n) => `@${esc(n)}`).join(", ")}</h1><p>Connected through Facebook. These accounts can read other professional accounts (Business Discovery) and their own insights. You can close this tab.</p>`);
+    }
     const result = await exchangeCode(env, {
       appId: app.appId,
       appSecret: app.appSecret,

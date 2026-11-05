@@ -20,6 +20,7 @@ MCP server for publishing and scheduling to Instagram professional accounts thro
 4. Open `/setup?key=<MCP_TOKEN>` and save the Instagram App ID and App Secret.
 5. Open `/connect?key=<MCP_TOKEN>` and log in, once per account.
 6. Add `https://instagrammcp.shneur.workers.dev/?bearer_token=<MCP_TOKEN>` as a custom connector.
+7. To read other professional accounts (Business Discovery, `ig_business_discovery`), also connect an account through Facebook: open `/connect-fb?key=<MCP_TOKEN>`, log in with a Facebook account that manages a Page linked to an Instagram professional account, and pick that Page. Business Discovery only exists on the Facebook Login flavor of the API. Accounts connected this way are read-only here (reads and insights, no publishing). Apply `migrations/0002_facebook_login.sql` to the D1 database first.
 
 ## Secrets
 
